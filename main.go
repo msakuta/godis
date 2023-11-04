@@ -38,14 +38,14 @@ func main() {
 func reader(addr string, conn net.Conn, conns map[string]chan string, data map[string]string, subscribers *map[string]chan string) {
 	for {
 		buf := make([]uint8, 128)
-		_, err := conn.Read(buf)
+		buflen, err := conn.Read(buf)
 		if err != nil {
 			fmt.Println("Read error: ", err)
 			return
 		}
-		fmt.Printf("Client sent: %s\n", buf)
+		fmt.Printf("Client sent[%d/%d]: %s\n", buflen, len(buf), buf)
 
-		cmdline := string(buf)
+		cmdline := string(buf[:buflen])
 		cmd := strings.Fields(cmdline)
 		switch cmd[0] {
 		case "GET":
@@ -57,12 +57,16 @@ func reader(addr string, conn net.Conn, conns map[string]chan string, data map[s
 				conn.Write([]byte("$-1\r\n"))
 			}
 		case "SET":
+			if len(cmd) < 3 {
+				conn.Write([]byte("-SET requires 2 args\n"))
+				continue
+			}
 			fmt.Printf("Client set: %s\n", cmd[1:])
 			data[cmd[1]] = cmd[2]
 			conn.Write([]byte("+OK\r\n"))
 		case "PUBLISH":
 			fmt.Printf("Client publish[%d]: %s\n", len(cmd), cmd[1:])
-			if len(cmd) < 4 {
+			if len(cmd) < 3 {
 				conn.Write([]byte("-PUBLISH requires 2 args\r\n"))
 				continue
 			}
@@ -74,7 +78,7 @@ func reader(addr string, conn net.Conn, conns map[string]chan string, data map[s
 			}
 		case "SUBSCRIBE":
 			fmt.Printf("Client subscribe[%d]: %s\n", len(cmd), cmd[1:])
-			if len(cmd) < 3 {
+			if len(cmd) < 2 {
 				conn.Write([]byte("-SUBSCRIBE requires 1 arg\r\n"))
 				continue
 			}
@@ -94,12 +98,12 @@ func subscribeLoop(conn net.Conn, ch chan string) {
 	go (func() {
 		buf := make([]uint8, 128)
 		for {
-			_, err := conn.Read(buf)
+			buflen, err := conn.Read(buf)
 			if err != nil {
 				fmt.Printf("Read error in waiting subscription: %s\n", err)
 				continue
 			}
-			cmd := strings.Fields(string(buf))
+			cmd := strings.Fields(string(buf[:buflen]))
 			switch cmd[0] {
 			case "UNSUBSCRIBE":
 				fmt.Printf("Client unsubscribed\n")
